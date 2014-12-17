@@ -2,6 +2,7 @@ import lxml
 import urllib
 import random
 import subprocess, threading, Queue
+import ffmpeg
 import numpy as np
 
 def pls_urls():
@@ -15,16 +16,17 @@ def stream_urls():
     for pls in pls_urls():
         yield stream_urls_from_pls(urllib.urlopen(pls))
 
-def single_stream_urls():
-    return map(random.choice, stream_urls())
+def n_stream_urls(n):
+    for pls in random.sample(pls_urls(), n):
+        yield stream_urls_from_pls(urllib.urlopen(pls))
 
-def numpy_stream(stream_url, n_samples=44000):
-    proc = subprocess.Popen(['ffmpeg', '-i', stream_url, '-f', 's16le', '-acodec', 'pcm_s16le', 'pipe:1'], stdout=subprocess.PIPE)
+def numpy_stream(stream_urls, sample_duration=1):
     outq = Queue.Queue(maxsize=10)
     def reader_worker():
         try:
-            while not proc.returncode:
-                outq.put(np.fromfile(proc.stdout, np.int16, n_samples, ''))
+            for stream_url in stream_urls:
+                for chunk in ffmpeg.numpy_reader(stream_url, sample_duration):
+                    outq.put(chunk)
         finally:
             outq.put('done')
     thread = threading.Thread(target=reader_worker)
@@ -35,9 +37,8 @@ def numpy_stream(stream_url, n_samples=44000):
             break
         yield row
 
-def numpy_all_streams(n_samples=44000):
-    stream_urls = single_stream_urls()
-    gens = [iter(numpy_stream(url, n_samples)) for url in stream_urls]
+def numpy_streams(urls, n_samples=44000):
+    gens = [iter(numpy_stream(url, n_samples)) for url in urls]
     while gens:
         row = []
         for gen in gens:

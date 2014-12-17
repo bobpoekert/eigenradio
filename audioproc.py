@@ -42,3 +42,12 @@ def merge_streams(sample_streams):
                 res = res * scaled_row
 
         yield fft.ifft(res)
+
+if __name__ == '__main__':
+    import shoutcast, subprocess, ffmpeg
+    urls = list(shoutcast.n_stream_urls(10))
+    print urls
+    streams = shoutcast.numpy_streams(urls)
+    with ffmpeg.audio_writer('test.aac') as writer:
+        for chunk in merge_streams(streams):
+            chunk.tofile(writer)
