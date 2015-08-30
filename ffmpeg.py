@@ -85,6 +85,9 @@ def audio_writer(outf, format='aac', bitrate='128k', onclose=None):
          '-r', str(audio_rate),
          '-ac', str(channels),
          '-i', '-',
+         '-acodec', 'libmp3lame',
+         '-f', 'mp3',
+         '-b', '128k',
         outf if is_string(outf) else 'pipe:1'],
         stdin=subprocess.PIPE,
         #stderr=open('/dev/null', 'w'),
@@ -96,7 +99,7 @@ def audio_writer(outf, format='aac', bitrate='128k', onclose=None):
     #    instream = iostream.PipeIOStream(proc.stdout.fileno())
     #    instream.read_until_close(onclose, streaming_callback=outf.write)
 
-    return proc.stdin
+    return (proc.stdin, proc.stdout)
 
 def copy_to(inseq, outf):
     for row in inseq:

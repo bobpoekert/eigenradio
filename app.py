@@ -1,71 +1,62 @@
-from tornado import netutil, ioloop, iostream, httpclient, stack_context
-import os, threading, subprocess, Queue, fcntl, ctypes
-import shoutcast, audioproc, socket_error
+from tornado.ioloop import IOLoop
+import tornado.web as web
+import tornado.iostream as iostream
+import audioproc, ffmpeg, shoutcast
+import threading
 
-libc = ctypes.cdll.LoadLibrary('libc.so.6')
-splice_syscall = libc.splice
+client_connections = set([])
 
-SPLICE_F_NONBLOCK = 0x02
-SPLICE_F_MOVE = 0x01
+def push(buf):
+    "Send buf to all connected clients"
+    print len(buf)
+    for conn in client_connections:
+        conn.write(buf)
+        conn.flush()
 
-try:
-    chunk_size = os.pathconf('.', os.pathconf_names['PC_PIPE_BUF'])
-except:
-    print 'pathconf failed'
-    import resource
-    chunk_size = resource.getpagesize()
+def generate_stream():
+    "Returns a pipe of aac audio for our stream"
+    encoder_in, encoder_out = ffmpeg.audio_writer(None)
+    def background():
+        urls = list(shoutcast.stream_urls())
+        streams = shoutcast.numpy_streams(urls, sample_duration=0.25)
+        ffmpeg.copy_to(audioproc.merge_streams(streams), encoder_in)
+    thread = threading.Thread(target=background)
+    thread.daemon = True
+    thread.start()
+    return encoder_out
 
-def splice(left, right):
-    total = 0
+def broadcast_pipe(pipe, callback):
+    "Streams the contents of the given pipe to all clients"
+    instream = iostream.PipeIOStream(pipe.fileno())
+    instream.read_until_close(callback=callback, streaming_callback=push)
 
-    while 1:
-        code = splice_syscall(left, 0, right, 0, chunk_size, SPLICE_F_NONBLOCK | SPLICE_F_MOVE)
+class StreamHandler(web.RequestHandler):
 
-        if code == -1:
-            errno = get_errno()
-            socket_error.raise_socket_error(errno)
+    @web.asynchronous
+    def get(self):
+        self.set_status(200)
+        self.set_header('Content-Type', 'audio/mpeg')
+        self.flush()
+        print 'connect'
+        client_connections.add(self)
 
-        total += code
-
-        if code < chunk_size:
-            break
-
-    return total
-
-class shunt(object):
-
-    def __init__(self, inf, outf, ioloop=None):
-        self.inf = inf
-        self.outf = outf
-        if ioloop is None:
-            self.ioloop = IOLoop.getInstance()
-        else:
-            self.ioloop = ioloop
-        self.instream = iostream.IOStream(inf)
-        self.outstream = iostream.IOStream(outf)
+    def on_connection_close(self):
+        print 'disconnect'
+        client_connections.remove(self)
 
 
-http_response = '\r\n'.join([
-    'HTTP/1.1 200 OK',
-    'Server: :p',
-    'Connection: close',
-    'Content-Type: audio/x-aac',
-    'Transfer-Encoding: chunked',
-    ''])
+app = web.Application([
+    ('/stream.mp3', StreamHandler)
+])
 
-pipe_read, pipe_write = os.pipe()
-
-def encode():
-    proc = subprocess.Popen([
-        'ffmpeg', '-i', 'pipe:0', '-f', 's16le', '-acodec', 'faac', 'pipe:1'],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    return (proc.stdin, proc.stdout)
-
-def processing_worker(outf):
-    for chunk in audioproc.merge_streams(shoutcast.numpy_all_streams()):
-        chunk.tofile(outf)
-
-def process():
-    encode_in, encode_out = encode()
-    processing_thread = threading.Thread(target=processing_worker, args=(encode_in,))
-    processing_thread.start()
+if __name__ == '__main__':
+    import sys
+    def die(_):
+        sys.exit(1)
+    broadcast_pipe(generate_stream(), die)
+    try:
+        port = int(sys.argv[1])
+    except IndexError:
+        port = 7878
+    app.listen(port)
+    IOLoop.current().start()

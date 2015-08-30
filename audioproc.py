@@ -14,7 +14,6 @@ def merge_streams(sample_streams):
         freqs = [fft.fft(p) for p in chunk if len(p) > 0]
         entropies = [entropy(p) for p in chunk if len(p) > 0]
         total_entropy = sum(entropies)
-        print total_entropy
         res = None
         for buf, e in zip(freqs, entropies):
             frac = e / total_entropy
@@ -32,5 +31,6 @@ if __name__ == '__main__':
     #with open('test.pcm', 'w') as writer:
     #    for row in merge_streams(streams):
     #        writer.write(row)
-    with ffmpeg.audio_writer('test.aac') as writer:
+    writer, _ = ffmpeg.audio_writer('test.aac')
+    with writer:
         ffmpeg.copy_to(merge_streams(streams), writer)
