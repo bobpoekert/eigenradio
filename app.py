@@ -17,8 +17,8 @@ def generate_stream():
     "Returns a pipe of aac audio for our stream"
     encoder_in, encoder_out = ffmpeg.audio_writer(None)
     def background():
-        urls = list(shoutcast.stream_urls())
-        streams = shoutcast.numpy_streams(urls, sample_duration=0.25)
+        urls = list(shoutcast.n_stream_urls(20))
+        streams = shoutcast.numpy_streams(urls, sample_duration=0.125)
         ffmpeg.copy_to(audioproc.merge_streams(streams), encoder_in)
     thread = threading.Thread(target=background)
     thread.daemon = True

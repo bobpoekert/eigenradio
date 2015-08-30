@@ -6,7 +6,7 @@ def entropy(chunk):
     chunk += 2**15
     counts = np.bincount(chunk)
     probs = counts.astype(np.float64) / len(counts)
-    return -np.sum(probs)**2
+    return -np.sum(probs)**10
 
 def merge_streams(sample_streams):
     for chunk in sample_streams:
@@ -21,7 +21,7 @@ def merge_streams(sample_streams):
                 res = buf * frac
             else:
                 res += buf * frac
-        yield fft.ifft(res / len(chunk)).astype(np.int16)
+        yield fft.ifft(res / len(chunk)).astype(np.int16) * 16
 
 if __name__ == '__main__':
     import shoutcast, subprocess, ffmpeg

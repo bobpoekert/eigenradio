@@ -13,52 +13,6 @@ raw_audio_options = [
     '-ac', str(channels)
 ]
 
-def hexstring_to_bytes(hex_string):
-    res = ""
-    for i in range(0, len(hex_string), 2):
-            res += chr(int(hex_string[i:i+2], 16))
-
-    return res
-
-def write_wav_header(out_file, fmt, codec_private_data, data_len):
-
-    extradata = hexstring_to_bytes(codec_private_data)
-
-    fmt['cbSize'] = len(extradata)
-    fmt_len = 18 + fmt['cbSize']
-    wave_len = len("WAVEfmt ") + 4 + fmt_len + len('data') + 4
-
-    out_file.write("RIFF")
-    out_file.write(struct.pack('<L', wave_len))
-    out_file.write("WAVEfmt ")
-    out_file.write(struct.pack('<L', fmt_len))
-    out_file.write(struct.pack('<H', fmt['wFormatTag']))
-    out_file.write(struct.pack('<H', fmt['nChannels']))
-    out_file.write(struct.pack('<L', fmt['nSamplesPerSec']))
-    out_file.write(struct.pack('<L', fmt['nAvgBytesPerSec']))
-    out_file.write(struct.pack('<H', fmt['nBlockAlign']))
-    out_file.write(struct.pack('<H', fmt['wBitsPerSample']))
-    out_file.write(struct.pack('<H', fmt['cbSize']))
-    out_file.write(extradata)
-    out_file.write("data")
-    out_file.write(struct.pack('<L', data_len))
-
-def write_default_wav_header(outf):
-    write_wav_header(
-            outf,
-            {
-                'wFormatTag':0x161,
-                'nChannels':channels,
-                'nSamplesPerSec':audio_rate,
-                'nAvgBytesPerSec':audio_rate*2,
-                'wBitsPerSample':16,
-                'nBlockAlign':8192,
-                'cbSize':0
-            },
-            "008800000f0000000000",
-            2**31)
-
-
 def audio_reader(infname):
     return subprocess.Popen(['ffmpeg', '-i', infname] + raw_audio_options + ['pipe:1'],
         stderr=open('/dev/null', 'w'),
