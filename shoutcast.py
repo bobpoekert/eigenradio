@@ -21,29 +21,20 @@ def n_stream_urls(n):
         yield stream_urls_from_pls(urllib.urlopen(pls))
 
 def numpy_stream(stream_urls, sample_duration=1):
-    outq = Queue.Queue(maxsize=10)
-    def reader_worker():
-        try:
-            for stream_url in stream_urls:
-                for chunk in ffmpeg.numpy_reader(stream_url, sample_duration):
-                    outq.put(chunk)
-        finally:
-            outq.put('done')
-    thread = threading.Thread(target=reader_worker)
-    thread.start()
-    while 1:
-        row = outq.get()
-        if row == 'done':
-            break
-        yield row
+    for stream_url in stream_urls:
+        for chunk in ffmpeg.numpy_reader(stream_url, sample_duration):
+            yield chunk
 
-def numpy_streams(urls, n_samples=44000):
-    gens = [iter(numpy_stream(url, n_samples)) for url in urls]
+def numpy_streams(urls, sample_duration=1):
+    gens = [iter(numpy_stream(url, sample_duration)) for url in urls]
     while gens:
         row = []
         for gen in gens:
             try:
-                row.append(next(gen))
+                v = next(gen)
+                if v is not None:
+                    row.append(v)
             except StopIteration:
                 gens.remove(gen)
-        yield row
+        if row:
+            yield row

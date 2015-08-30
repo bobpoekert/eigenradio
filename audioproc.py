@@ -1,53 +1,36 @@
 import numpy.fft as fft
 import numpy as np
 
+def entropy(chunk):
+    chunk = chunk.astype(np.int32)
+    chunk += 2**15
+    counts = np.bincount(chunk)
+    probs = counts.astype(np.float64) / len(counts)
+    return -np.sum(probs)**2
+
 def merge_streams(sample_streams):
-    """Takes an sequence of sequences of numpy arrays representing audio samples
-       and produces a sequence of numpy arrays representing audio samples which are
-       the product of the input samples at each timestep scaled by discriminativeness
-    """
     for chunk in sample_streams:
-        freqs = [fft.fft(p) for p in chunk]
-
-        # compute P(this stream | this sample) for all samples
-        # normalize so that the probabilities for each timestep sum to 1
-        # scale each sample by normalized probability
-        # add together
-        # serve
-
-        # P(stream | sample) = P(sample | stream)P(stream) / P(sample)
-        # P(sample | stream) = count(sample) / length(stream)
-        # P(stream) = 1 / number_of_streams
-        # P(sample) = 1 / number_of_samples
-
-        p_stream = 1.0 / len(freqs)
+        chunk = map(np.copy, chunk) # defensive copy
+        freqs = [fft.fft(p) for p in chunk if len(p) > 0]
+        entropies = [entropy(p) for p in chunk if len(p) > 0]
+        total_entropy = sum(entropies)
+        print total_entropy
         res = None
-        for row in freqs:
-            p_sample = 1.0 / len(row)
-            distinct_samples = np.unique(row)
-            if len(distinct_samples) == len(row):
-                counts = np.ones(len(distnct_samples))
-            else:
-                counts, bin_edges = np.histogram(row, buckets=len(distinct_samples), density=False)
-
-            p_sample_given_stream = counts / len(counts)
-            p_stream_given_sample = (p_sample_given_stream * p_stream) / p_sample
-
-            normed_p_sample_given_stream = p_sample_given_stream / np.sum(p_sample_given_stream)
-            scaled_row = row * normed_p_sample_given_stream
-
+        for buf, e in zip(freqs, entropies):
+            frac = e / total_entropy
             if res is None:
-                res = scaled_row
+                res = buf * frac
             else:
-                res = res * scaled_row
-
-        yield fft.ifft(res)
+                res += buf * frac
+        yield fft.ifft(res / len(chunk)).astype(np.int16)
 
 if __name__ == '__main__':
     import shoutcast, subprocess, ffmpeg
     urls = list(shoutcast.n_stream_urls(10))
     print urls
-    streams = shoutcast.numpy_streams(urls)
+    streams = shoutcast.numpy_streams(urls, sample_duration=0.25)
+    #with open('test.pcm', 'w') as writer:
+    #    for row in merge_streams(streams):
+    #        writer.write(row)
     with ffmpeg.audio_writer('test.aac') as writer:
-        for chunk in merge_streams(streams):
-            chunk.tofile(writer)
+        ffmpeg.copy_to(merge_streams(streams), writer)
